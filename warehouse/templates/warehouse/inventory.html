@@ -68,6 +68,9 @@
 
 <!-- Модальное окно создания Прихода / Выдачи -->
 {% if user.role != 'manager' %}
+<!-- Подключаем библиотеку сканера -->
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
 <div class="modal fade" id="txModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -76,17 +79,31 @@
                 <input type="hidden" name="transaction_type" id="modalTxType" value="in">
                 <div class="modal-header">
                     <h5 class="modal-title" id="modalTitle">Операция</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="stopScanner()"></button>
                 </div>
                 <div class="modal-body">
+
+                    <!-- Поле выбора товара с кнопкой сканера -->
                     <div class="mb-3">
                         <label class="form-label">Товар</label>
-                        <select name="item_id" class="form-select" required>
-                            {% for row in inventory_data %}
-                            <option value="{{ row.item.id }}">{{ row.item.name }} (остаток: {{ row.balance }} {{ row.item.get_unit_display }})</option>
-                            {% endfor %}
-                        </select>
+                        <div class="input-group">
+                            <select name="item_id" id="itemSelect" class="form-select" required>
+                                {% for row in inventory_data %}
+                                <option value="{{ row.item.id }}" data-barcode="{{ row.item.barcode|default:'' }}">
+                                    {{ row.item.name }} (остаток: {{ row.balance }} {{ row.item.get_unit_display }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" class="btn btn-outline-primary" onclick="startScanner()">📷 Сканировать</button>
+                        </div>
                     </div>
+
+                    <!-- Контейнер камеры -->
+                    <div id="reader-container" class="mb-3 text-center" style="display: none;">
+                        <div id="reader" style="width: 100%; max-width: 350px; margin: 0 auto;"></div>
+                        <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="stopScanner()">Закрыть камеру</button>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label">Количество</label>
                         <input type="number" step="0.01" name="quantity" class="form-control" required>
@@ -101,7 +118,7 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick="stopScanner()">Отмена</button>
                     <button type="submit" class="btn btn-primary">Сохранить</button>
                 </div>
             </form>
@@ -114,7 +131,7 @@ function setTxType(type) {
     document.getElementById('modalTxType').value = type;
     const title = type === 'in' ? 'Приход товара' : 'Выдача на объект';
     document.getElementById('modalTitle').innerText = title;
-    
+
     const locGroup = document.getElementById('locationGroup');
     const locInput = document.getElementById('locationInput');
     if (type === 'out') {
@@ -125,6 +142,53 @@ function setTxType(type) {
         locInput.required = false;
     }
 }
+
+let html5QrcodeScanner = null;
+
+function startScanner() {
+    document.getElementById('reader-container').style.display = 'block';
+
+    if (!html5QrcodeScanner) {
+        html5QrcodeScanner = new Html5Qrcode("reader");
+    }
+
+    html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 220, height: 150 } },
+        (decodedText) => {
+            const select = document.getElementById('itemSelect');
+            let found = false;
+
+            for (let option of select.options) {
+                const barcode = option.getAttribute('data-barcode');
+                if ((barcode && barcode === decodedText) || option.value === decodedText) {
+                    select.value = option.value;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (found) {
+                stopScanner();
+            } else {
+                alert(`Товар со штрихкодом "${decodedText}" не найден!`);
+            }
+        },
+        (errorMessage) => {}
+    ).catch(err => {
+        alert("Ошибка доступа к камере: " + err);
+        document.getElementById('reader-container').style.display = 'none';
+    });
+}
+
+function stopScanner() {
+    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+        html5QrcodeScanner.stop().then(() => {
+            document.getElementById('reader-container').style.display = 'none';
+        }).catch(err => console.error(err));
+    } else {
+        document.getElementById('reader-container').style.display = 'none';
+    }
+}
 </script>
-{% endif %}
-{% endblock %}
+{% endif %}{% endblock %}

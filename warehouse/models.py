@@ -16,45 +16,60 @@ class User(AbstractUser):
 
 
 class Item(models.Model):
-    UNIT_CHOICES = (
-        ('pcs', 'Штуки'),
-        ('m', 'Метры'),
+  UNIT_CHOICES = (
+      ('pcs', 'Штуки'),
+      ('m', 'Метры'),
+  )
+  CURRENCY_CHOICES = (
+      ('UZS', 'Сум'),
+      ('USD', 'Доллар'),
+      ('CNY', 'Юань'),
+  )
+
+  name = models.CharField(max_length=255, blank=False, null=False)
+  unit = models.CharField(max_length=3, choices=UNIT_CHOICES)
+  price = models.DecimalField(
+      max_digits=12,
+      decimal_places=2,
+      validators=[MinValueValidator(Decimal('0.00'))],
+  )
+  currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES)
+
+  # Новое поле для штрихкода или QR (необязательное)
+  barcode = models.CharField(
+      max_length=50,
+      blank=True,
+      null=True,
+      unique=True,
+      verbose_name='Штрихкод / QR',
+  )
+
+  is_archived = models.BooleanField(default=False)
+
+  def __str__(self):
+    return self.name
+
+  def get_balance(self):
+    # Находим ID всех оригинальных транзакций, которые были отменены
+    canceled_ids = Transaction.objects.filter(
+        transaction_type='cancel'
+    ).values_list('canceled_transaction_id', flat=True)
+
+    incomes = (
+        self.transaction_set.filter(transaction_type='in')
+        .exclude(id__in=canceled_ids)
+        .aggregate(total=Sum('quantity'))['total']
+        or Decimal('0.00')
     )
-    CURRENCY_CHOICES = (
-        ('UZS', 'Сум'),
-        ('USD', 'Доллар'),
-        ('CNY', 'Юань'),
+
+    outcomes = (
+        self.transaction_set.filter(transaction_type='out')
+        .exclude(id__in=canceled_ids)
+        .aggregate(total=Sum('quantity'))['total']
+        or Decimal('0.00')
     )
 
-    name = models.CharField(max_length=255, blank=False, null=False)
-    unit = models.CharField(max_length=3, choices=UNIT_CHOICES)
-    price = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.00'))]
-    )
-    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES)
-    is_archived = models.BooleanField(default=False)
-
-    def __str__(self):
-        return self.name
-
-    def get_balance(self):
-        # Находим ID всех оригинальных транзакций, которые были отменены
-        canceled_ids = Transaction.objects.filter(
-            transaction_type='cancel'
-        ).values_list('canceled_transaction_id', flat=True)
-
-        incomes = self.transaction_set.filter(
-            transaction_type='in'
-        ).exclude(id__in=canceled_ids).aggregate(total=Sum('quantity'))['total'] or Decimal('0.00')
-
-        outcomes = self.transaction_set.filter(
-            transaction_type='out'
-        ).exclude(id__in=canceled_ids).aggregate(total=Sum('quantity'))['total'] or Decimal('0.00')
-
-        return incomes - outcomes
-
+    return incomes - outcomes
 
 class Transaction(models.Model):
     TYPE_CHOICES = (
