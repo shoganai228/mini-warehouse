@@ -1,0 +1,54 @@
+{% extends 'warehouse/base.html' %}
+
+{% block content %}
+<h2 class="mb-4">История операций</h2>
+
+<div class="table-responsive bg-body shadow-sm rounded">
+    <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Дата и время</th>
+                <th>Кто сделал</th>
+                <th>Тип</th>
+                <th>Товар</th>
+                <th>Кол-во</th>
+                <th>Объект</th>
+                <th>Комментарий</th>
+                {% if user.role == 'admin' %}
+                <th>Действие</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for tx in transactions %}
+            <tr class="{% if tx.transaction_type == 'cancel' %}table-secondary text-muted{% endif %}">
+                <td>{{ tx.created_at|date:"d.m.Y H:i" }}</td>
+                <td>{{ tx.user.username }}</td>
+                <td>
+                    {% if tx.transaction_type == 'in' %}<span class="badge bg-success">Приход</span>
+                    {% elif tx.transaction_type == 'out' %}<span class="badge bg-warning text-dark">Выдача</span>
+                    {% else %}<span class="badge bg-danger">Отмена</span>{% endif %}
+                </td>
+                <td>{{ tx.item.name }}</td>
+                <td>{{ tx.quantity }} {{ tx.item.get_unit_display }}</td>
+                <td>{{ tx.location|default:"-" }}</td>
+                <td>{{ tx.comment|default:"-" }}</td>
+                {% if user.role == 'admin' %}
+                <td>
+                    {% if tx.transaction_type != 'cancel' and not tx.canceled_transaction %}
+                    <a href="{% url 'cancel_transaction' tx.id %}" class="btn btn-outline-danger btn-sm" onclick="return confirm('Отменить операцию?')">Отменить</a>
+                    {% elif tx.canceled_transaction %}
+                    <small class="text-danger">Отменено</small>
+                    {% endif %}
+                </td>
+                {% endif %}
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" class="text-center text-muted py-4">Операций пока не было</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
